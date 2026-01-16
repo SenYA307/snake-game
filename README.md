@@ -11,12 +11,12 @@ A classic snake game with Web3 payment integration on Base network.
 
 <!-- 
   ⚠️ REPLACE THE URL BELOW with your actual GitHub repository URL
-  After pushing to GitHub, replace YOUR_USERNAME/snake-game with your repo
+  After pushing to GitHub, replace SenYA307/snake-game with your repo
 -->
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/snake-game&env=TREASURY_ADDRESS,PAYMENT_TOKEN_SECRET,NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID&envDescription=Required%20environment%20variables%20for%20Pixel%20Snake&envLink=https://github.com/YOUR_USERNAME/snake-game%23environment-variables)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/SenYA307/snake-game&env=TREASURY_ADDRESS,PAYMENT_TOKEN_SECRET,NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID&envDescription=Required%20environment%20variables%20for%20Pixel%20Snake&envLink=https://github.com/SenYA307/snake-game%23environment-variables)
 
-> **📝 Note:** Replace `YOUR_USERNAME/snake-game` in the button URL above with your actual GitHub repo path after pushing.
+> **📝 Note:** Replace `SenYA307/snake-game` in the button URL above with your actual GitHub repo path after pushing.
 
 ---
 
@@ -50,7 +50,7 @@ gh repo create snake-game --public --source=. --push
 # 1. Go to github.com/new
 # 2. Create repo named "snake-game"
 # 3. Run:
-git remote add origin https://github.com/YOUR_USERNAME/snake-game.git
+git remote add origin https://github.com/SenYA307/snake-game.git
 git branch -M main
 git push -u origin main
 ```
