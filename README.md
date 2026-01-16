@@ -115,10 +115,102 @@ Then open in browser and test the full flow:
 ## 🎮 Features
 
 - **Retro pixel art graphics** - Custom-generated sprites
+- **Compact game board** - 10×10 grid (logically 2× smaller than original)
+- **Large visual display** - 400×400px canvas (40px cells for visibility)
+- **Arcade chiptune music** - Procedurally generated WebAudio
+- **Explosion SFX** - On-death arcade explosion sound
 - **Pay-per-run** - Each game costs ~£0.0003 in ETH
 - **Base network** - Low fees (~$0.001 per transaction)
 - **Secure backend** - Payments verified on-chain
-- **Anti-replay** - Each transaction can only be used once
+
+---
+
+## 🎵 Audio System
+
+The game features procedurally generated arcade audio using the WebAudio API.
+
+### Game State Audio Rules
+
+| State | BGM | SFX |
+|-------|-----|-----|
+| **IDLE** (before start) | ❌ Off | ❌ Off |
+| **PLAYING** | ✅ Playing | ✅ Enabled |
+| **DEAD** (game over) | ❌ Stops + fade | 💥 Explosion plays |
+| **PAYWALL** | ❌ Off | ❌ Off |
+
+**Key behaviors:**
+- BGM starts ONLY when gameplay begins (after payment + pressing Start)
+- On death: BGM fades out, explosion SFX plays once, then silence
+- BGM does NOT restart on game over or paywall screens
+- Audio only starts after user gesture (browser autoplay policy)
+
+### Controls
+
+| Control | Description |
+|---------|-------------|
+| 🎵 / 🔇 | Toggle background music mute |
+| 🔔 / 🔕 | Toggle sound effects mute |
+| Green slider | BGM volume (0-100%) |
+| Orange slider | SFX volume (0-100%) |
+
+Preferences are saved to localStorage and persist across sessions.
+
+### Sound Effects
+
+| Event | Sound |
+|-------|-------|
+| Eat food | Quick ascending chirp |
+| Eat bonus | Triple ascending arpeggio |
+| Death | Explosion (noise + pitch drop) |
+
+### Customization
+
+All audio is generated in `src/lib/audioManager.ts`:
+
+```typescript
+// Tempo (BPM)
+setInterval(playBeat, 200);  // 200ms = 150 BPM
+
+// Melody notes (pentatonic scale)
+MELODY_NOTES = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25];
+
+// Waveforms: 'square', 'triangle', 'sawtooth', 'sine'
+```
+
+### Using Custom Audio Files
+
+To use MP3 files instead of procedural audio:
+
+1. Add files to `/public/audio/`:
+   - `arcade.mp3` - Background music (looping)
+   - `explosion.mp3` - Death sound effect
+2. Modify `audioManager.ts` to use `<audio>` elements
+3. Ensure files are **royalty-free** or properly licensed
+
+> **License**: The procedural audio is original code with no licensing restrictions.
+
+---
+
+## 📐 Board Dimensions
+
+The game board is **2× smaller logically** but **visually comfortable**:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `GRID_COLS` | 10 | Grid width (was 20) |
+| `GRID_ROWS` | 10 | Grid height (was 20) |
+| `CELL_SIZE` | 40px | Visual cell size (was 20px) |
+| Canvas | 400×400px | Total visual size |
+
+To adjust board size, edit `src/lib/gameConstants.ts`:
+
+```typescript
+export const GRID_COLS = 10;   // Increase for larger gameplay area
+export const GRID_ROWS = 10;   // Increase for larger gameplay area
+export const CELL_SIZE = 40;   // Increase for larger visual cells
+```
+
+The canvas auto-scales on mobile (max-width: 90vw).
 
 ---
 

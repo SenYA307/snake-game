@@ -1,12 +1,30 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { 
+  GRID_COLS,
+  GRID_ROWS,
+  CELL_SIZE,
+  CANVAS_WIDTH,
+  CANVAS_HEIGHT,
+  INITIAL_GAME_SPEED, 
+  MIN_GAME_SPEED, 
+  SPEED_INCREMENT,
+  INITIAL_SNAKE,
+  FOOD_POINTS,
+  BONUS_POINTS,
+  BONUS_SPAWN_CHANCE,
+  BONUS_DURATION,
+  type GameState
+} from '@/lib/gameConstants';
+import { setGameState, playEat, playBonus, stopAll } from '@/lib/audioManager';
+import { AudioControls } from './AudioControls';
 
 // ===== PIXEL ART SPRITE GENERATOR =====
 class SpriteGenerator {
   private spriteCache: Map<string, HTMLCanvasElement> = new Map();
 
-  createSprite(pixelData: number[][], colors: Record<number, string>, size = 20): HTMLCanvasElement {
+  createSprite(pixelData: number[][], colors: Record<number, string>, size = CELL_SIZE): HTMLCanvasElement {
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
@@ -273,39 +291,36 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
   
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isGameOver, setIsGameOver] = useState(false);
+  const [currentState, setCurrentState] = useState<GameState>('IDLE');
 
   // Game state refs (to avoid stale closures in game loop)
-  const snakeRef = useRef<Position[]>([
-    { x: 10, y: 10 },
-    { x: 9, y: 10 },
-    { x: 8, y: 10 },
-  ]);
+  const snakeRef = useRef<Position[]>(INITIAL_SNAKE.map(p => ({ ...p })));
   const directionRef = useRef<Direction>({ x: 1, y: 0 });
   const nextDirectionRef = useRef<Direction>({ x: 1, y: 0 });
-  const foodRef = useRef<Position>({ x: 15, y: 10 });
+  const foodRef = useRef<Position>({ x: Math.floor(GRID_COLS * 0.75), y: Math.floor(GRID_ROWS / 2) });
   const bonusFoodRef = useRef<Position | null>(null);
   const bonusTimerRef = useRef(0);
   const scoreRef = useRef(0);
-  const gameSpeedRef = useRef(300);
-
-  const gridSize = 20;
-  const tileCount = 20;
+  const gameSpeedRef = useRef(INITIAL_GAME_SPEED);
 
   // Initialize sprites
   useEffect(() => {
     spritesRef.current = new SpriteGenerator();
     const saved = localStorage.getItem('snakeHighScore');
     if (saved) setHighScore(parseInt(saved, 10));
+    
+    // Cleanup on unmount - stop all audio
+    return () => {
+      stopAll();
+    };
   }, []);
 
   const randomPosition = useCallback((): Position => {
     let pos: Position;
     do {
       pos = {
-        x: Math.floor(Math.random() * tileCount),
-        y: Math.floor(Math.random() * tileCount),
+        x: Math.floor(Math.random() * GRID_COLS),
+        y: Math.floor(Math.random() * GRID_ROWS),
       };
     } while (snakeRef.current.some((s) => s.x === pos.x && s.y === pos.y));
     return pos;
@@ -329,29 +344,31 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Grid
-    ctx.strokeStyle = 'rgba(0, 255, 136, 0.05)';
+    ctx.strokeStyle = 'rgba(0, 255, 136, 0.08)';
     ctx.lineWidth = 1;
-    for (let i = 0; i <= tileCount; i++) {
+    for (let i = 0; i <= GRID_COLS; i++) {
       ctx.beginPath();
-      ctx.moveTo(i * gridSize, 0);
-      ctx.lineTo(i * gridSize, canvas.height);
+      ctx.moveTo(i * CELL_SIZE, 0);
+      ctx.lineTo(i * CELL_SIZE, canvas.height);
       ctx.stroke();
+    }
+    for (let i = 0; i <= GRID_ROWS; i++) {
       ctx.beginPath();
-      ctx.moveTo(0, i * gridSize);
-      ctx.lineTo(canvas.width, i * gridSize);
+      ctx.moveTo(0, i * CELL_SIZE);
+      ctx.lineTo(canvas.width, i * CELL_SIZE);
       ctx.stroke();
     }
 
     // Food
     const food = foodRef.current;
-    ctx.drawImage(sprites.getFood(), food.x * gridSize, food.y * gridSize, gridSize, gridSize);
+    ctx.drawImage(sprites.getFood(), food.x * CELL_SIZE, food.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
 
     // Bonus food
     const bonus = bonusFoodRef.current;
     if (bonus) {
       const pulse = Math.sin(Date.now() / 100) * 0.2 + 0.8;
       ctx.globalAlpha = pulse;
-      ctx.drawImage(sprites.getBonusFood(), bonus.x * gridSize, bonus.y * gridSize, gridSize, gridSize);
+      ctx.drawImage(sprites.getBonusFood(), bonus.x * CELL_SIZE, bonus.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
       ctx.globalAlpha = 1;
     }
 
@@ -378,7 +395,7 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
         sprite = sprites.getSnakeBody(i % 2 === 0);
       }
 
-      ctx.drawImage(sprite, segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
+      ctx.drawImage(sprite, segment.x * CELL_SIZE, segment.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
     }
   }, []);
 
@@ -391,10 +408,10 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
     };
 
     // Wrap through walls
-    if (head.x < 0) head.x = tileCount - 1;
-    if (head.x >= tileCount) head.x = 0;
-    if (head.y < 0) head.y = tileCount - 1;
-    if (head.y >= tileCount) head.y = 0;
+    if (head.x < 0) head.x = GRID_COLS - 1;
+    if (head.x >= GRID_COLS) head.x = 0;
+    if (head.y < 0) head.y = GRID_ROWS - 1;
+    if (head.y >= GRID_ROWS) head.y = 0;
 
     // Self collision
     if (snakeRef.current.some((s) => s.x === head.x && s.y === head.y)) {
@@ -408,28 +425,30 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
     const food = foodRef.current;
     
     if (head.x === food.x && head.y === food.y) {
-      scoreRef.current += 10;
+      scoreRef.current += FOOD_POINTS;
       setScore(scoreRef.current);
       foodRef.current = randomPosition();
       ate = true;
+      playEat();
 
-      if (Math.random() < 0.3 && !bonusFoodRef.current) {
+      if (Math.random() < BONUS_SPAWN_CHANCE && !bonusFoodRef.current) {
         bonusFoodRef.current = randomPosition();
-        bonusTimerRef.current = 50;
+        bonusTimerRef.current = BONUS_DURATION;
       }
 
-      if (gameSpeedRef.current > 160) {
-        gameSpeedRef.current -= 4;
+      if (gameSpeedRef.current > MIN_GAME_SPEED) {
+        gameSpeedRef.current -= SPEED_INCREMENT;
       }
     }
 
     const bonus = bonusFoodRef.current;
     if (bonus && head.x === bonus.x && head.y === bonus.y) {
-      scoreRef.current += 50;
+      scoreRef.current += BONUS_POINTS;
       setScore(scoreRef.current);
       bonusFoodRef.current = null;
       bonusTimerRef.current = 0;
       ate = true;
+      playBonus();
     }
 
     if (bonusFoodRef.current) {
@@ -447,8 +466,15 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
   }, [draw, randomPosition]);
 
   const handleGameOver = useCallback(() => {
-    setIsGameOver(true);
-    setIsRunning(false);
+    // === TRANSITION TO DEAD STATE ===
+    // Audio manager will: fade BGM, play explosion, then silence
+    setCurrentState('DEAD');
+    setGameState('DEAD');
+    
+    if (gameLoopRef.current) {
+      clearTimeout(gameLoopRef.current);
+      gameLoopRef.current = null;
+    }
     
     const finalScore = scoreRef.current;
     
@@ -458,11 +484,10 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
     }
     
     // === PAY-PER-RUN: Notify parent that run ended ===
-    // This will trigger the paywall to appear
-    // Small delay to let the game over screen show briefly
+    // Delay to show "Game Over" and let explosion sound play
     setTimeout(() => {
       onRunEnded(finalScore);
-    }, 2000); // Show "Game Over" for 2 seconds, then paywall
+    }, 2500);
   }, [highScore, onRunEnded]);
 
   const gameLoop = useCallback(() => {
@@ -472,22 +497,21 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
 
   const startGame = useCallback(() => {
     // Reset state
-    snakeRef.current = [
-      { x: 10, y: 10 },
-      { x: 9, y: 10 },
-      { x: 8, y: 10 },
-    ];
+    snakeRef.current = INITIAL_SNAKE.map(p => ({ ...p }));
     directionRef.current = { x: 1, y: 0 };
     nextDirectionRef.current = { x: 1, y: 0 };
     foodRef.current = randomPosition();
     bonusFoodRef.current = null;
     bonusTimerRef.current = 0;
     scoreRef.current = 0;
-    gameSpeedRef.current = 300;
+    gameSpeedRef.current = INITIAL_GAME_SPEED;
     
     setScore(0);
-    setIsGameOver(false);
-    setIsRunning(true);
+    
+    // === TRANSITION TO PLAYING STATE ===
+    // Audio manager will start BGM
+    setCurrentState('PLAYING');
+    setGameState('PLAYING');
 
     draw();
     gameLoopRef.current = window.setTimeout(gameLoop, gameSpeedRef.current);
@@ -496,6 +520,8 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
   // Keyboard controls
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      if (currentState !== 'PLAYING') return;
+      
       const key = e.key.toLowerCase();
 
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
@@ -524,7 +550,7 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
 
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [currentState]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -532,6 +558,7 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
       if (gameLoopRef.current) {
         clearTimeout(gameLoopRef.current);
       }
+      stopAll();
     };
   }, []);
 
@@ -541,6 +568,8 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
   }, [draw]);
 
   const setDirection = (dir: string) => {
+    if (currentState !== 'PLAYING') return;
+    
     const directions: Record<string, Direction> = {
       up: { x: 0, y: -1 },
       down: { x: 0, y: 1 },
@@ -557,16 +586,22 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
     }
   };
 
+  const isGameOver = currentState === 'DEAD';
+  const isIdle = currentState === 'IDLE';
+
   return (
     <div className="game-wrapper">
-      <h1>🐍 PIXEL SNAKE</h1>
+      <div className="header-row">
+        <h1>🐍 PIXEL SNAKE</h1>
+        <AudioControls />
+      </div>
 
       <div className="game-container">
-        <canvas ref={canvasRef} width={400} height={400} />
+        <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
         
         {isGameOver && (
           <div className="game-over">
-            <h2>GAME OVER</h2>
+            <h2>💀 GAME OVER</h2>
             <p>Score: {score}</p>
             <p className="pay-notice">Pay again to play another run...</p>
           </div>
@@ -578,9 +613,9 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
         <div className="score-box">BEST: {highScore}</div>
       </div>
 
-      {!isRunning && !isGameOver && (
+      {isIdle && (
         <button className="start-btn" onClick={startGame}>
-          START GAME
+          ▶ START GAME
         </button>
       )}
 
@@ -605,29 +640,43 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
           flex-direction: column;
           align-items: center;
           padding: 20px;
+          min-height: 100vh;
+        }
+
+        .header-row {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 20px;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
         }
 
         h1 {
-          font-size: 2.5rem;
+          font-size: 2.2rem;
           color: #00ff88;
           text-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88;
-          margin-bottom: 20px;
-          letter-spacing: 6px;
+          margin: 0;
+          letter-spacing: 4px;
         }
 
         .game-container {
           position: relative;
-          padding: 15px;
+          padding: 12px;
           background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
           border: 4px solid #00ff88;
           border-radius: 8px;
-          box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+          box-shadow: 0 0 30px rgba(0, 255, 136, 0.3), inset 0 0 20px rgba(0, 0, 0, 0.5);
         }
 
         canvas {
           display: block;
           image-rendering: pixelated;
           image-rendering: crisp-edges;
+          max-width: 90vw;
+          max-height: 60vh;
+          width: auto;
+          height: auto;
         }
 
         .game-over {
@@ -636,26 +685,28 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
           left: 50%;
           transform: translate(-50%, -50%);
           background: rgba(10, 10, 18, 0.95);
-          padding: 40px;
+          padding: 30px 40px;
           border: 4px solid #ff6b6b;
+          border-radius: 8px;
           text-align: center;
           z-index: 10;
+          box-shadow: 0 0 40px rgba(255, 107, 107, 0.4);
         }
 
         .game-over h2 {
           color: #ff6b6b;
-          font-size: 2rem;
-          margin-bottom: 15px;
+          font-size: 1.6rem;
+          margin-bottom: 10px;
           text-shadow: 0 0 20px #ff6b6b;
         }
 
         .game-over p {
-          font-size: 1.3rem;
-          margin-bottom: 20px;
+          font-size: 1.2rem;
+          margin-bottom: 10px;
         }
 
         .game-over .pay-notice {
-          font-size: 0.9rem;
+          font-size: 0.85rem;
           color: #888;
           margin-top: 15px;
           animation: pulse 1.5s ease-in-out infinite;
@@ -670,7 +721,7 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
           display: flex;
           gap: 20px;
           margin-top: 20px;
-          font-size: 1.3rem;
+          font-size: 1.1rem;
         }
 
         .score-box {
@@ -681,40 +732,41 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
         }
 
         .start-btn {
-          margin-top: 20px;
-          padding: 15px 40px;
+          margin-top: 25px;
+          padding: 14px 40px;
           font-size: 1.3rem;
           background: transparent;
-          border: 3px solid #ff6b6b;
-          color: #ff6b6b;
+          border: 3px solid #00ff88;
+          color: #00ff88;
           cursor: pointer;
           transition: all 0.2s;
-          letter-spacing: 2px;
+          letter-spacing: 3px;
+          border-radius: 4px;
         }
 
         .start-btn:hover {
-          background: #ff6b6b;
+          background: #00ff88;
           color: #0a0a12;
-          box-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
+          box-shadow: 0 0 25px rgba(0, 255, 136, 0.5);
         }
 
         .mobile-controls {
           display: none;
-          margin-top: 20px;
-          gap: 10px;
+          margin-top: 25px;
+          gap: 8px;
           flex-direction: column;
         }
 
         .control-row {
           display: flex;
           justify-content: center;
-          gap: 10px;
+          gap: 8px;
         }
 
         .control-btn {
           width: 55px;
           height: 55px;
-          font-size: 1.5rem;
+          font-size: 1.4rem;
           background: rgba(0, 255, 136, 0.1);
           border: 2px solid #00ff88;
           color: #00ff88;
@@ -728,8 +780,8 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
         }
 
         .instructions {
-          margin-top: 25px;
-          font-size: 1.1rem;
+          margin-top: 20px;
+          font-size: 0.95rem;
           color: #666;
         }
 
@@ -742,7 +794,22 @@ export function SnakeGame({ onRunEnded, runNumber = 1 }: SnakeGameProps) {
             display: flex;
           }
           h1 {
-            font-size: 1.8rem;
+            font-size: 1.4rem;
+            letter-spacing: 2px;
+          }
+          .header-row {
+            flex-direction: column;
+            gap: 12px;
+          }
+          .game-container {
+            padding: 8px;
+          }
+          .score-panel {
+            gap: 10px;
+          }
+          .score-box {
+            padding: 8px 14px;
+            font-size: 0.95rem;
           }
         }
       `}</style>
