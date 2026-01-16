@@ -114,14 +114,19 @@ Then open in browser and test the full flow:
 
 ## 🎮 Features
 
-- **Retro pixel art graphics** - Custom-generated sprites
-- **Compact game board** - 10×10 grid (logically 2× smaller than original)
-- **Large visual display** - 400×400px canvas (40px cells for visibility)
-- **Arcade chiptune music** - Procedurally generated WebAudio
-- **Explosion SFX** - On-death arcade explosion sound
+- **Retro pixel art graphics** - Custom-generated sprites with smooth movement
+- **Compact game board** - 10×10 grid (2× smaller gameplay, larger visual cells)
+- **Large visual display** - 500×500px canvas (50px cells for great visibility)
+- **Smooth animations** - Interpolated movement at 60fps, particle effects
+- **Arcade chiptune music** - Procedurally generated WebAudio BGM
+- **Sound effects** - Explosion, food pickup sparkle, bonus sounds
+- **Death animation** - Particle explosion on collision
+- **Pause function** - Press Space/Escape/P to pause
+- **Progressive difficulty** - Speed increases every 3 apples
+- **Direction buffering** - Queue inputs for responsive controls
 - **Pay-per-run** - Each game costs ~£0.0003 in ETH
-- **Base network** - Low fees (~$0.001 per transaction)
-- **Secure backend** - Payments verified on-chain
+- **Smart auto-pay** - After death, payment flow starts automatically
+- **Rejection memory** - If user cancels once, no more auto-prompts
 
 ---
 
@@ -193,24 +198,57 @@ To use MP3 files instead of procedural audio:
 
 ## 📐 Board Dimensions
 
-The game board is **2× smaller logically** but **visually comfortable**:
+The game board is **2× smaller logically** but **visually large**:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
 | `GRID_COLS` | 10 | Grid width (was 20) |
 | `GRID_ROWS` | 10 | Grid height (was 20) |
-| `CELL_SIZE` | 40px | Visual cell size (was 20px) |
-| Canvas | 400×400px | Total visual size |
+| `CELL_SIZE` | 50px | Visual cell size (was 20px) |
+| Canvas | 500×500px | Total visual size |
 
 To adjust board size, edit `src/lib/gameConstants.ts`:
 
 ```typescript
 export const GRID_COLS = 10;   // Increase for larger gameplay area
 export const GRID_ROWS = 10;   // Increase for larger gameplay area
-export const CELL_SIZE = 40;   // Increase for larger visual cells
+export const CELL_SIZE = 50;   // Increase for larger visual cells
 ```
 
 The canvas auto-scales on mobile (max-width: 90vw).
+
+---
+
+## 💀 Post-Death Payment Flow
+
+When the player dies:
+
+1. **Explosion animation** plays (~800ms)
+2. **"Game Over" prompt** appears: "Play Again?"
+3. **Payment flow** starts:
+   - If wallet connected & on Base → quote fetched automatically
+   - User clicks "Pay & Play Again" to send transaction
+   - After verification → new game starts
+
+### Auto-Pay & Rejection Memory
+
+The game attempts to streamline the replay flow:
+
+| Scenario | Behavior |
+|----------|----------|
+| First death | Payment buttons shown, user must click |
+| User pays successfully | Game starts |
+| User clicks "Cancel" in wallet | Autopay disabled for that wallet |
+| Next death (after cancel) | Buttons shown, no auto-prompt |
+
+**Why no auto-popup?** Browsers block auto-opening wallet popups without a user gesture. The payment always requires a button click.
+
+**Rejection storage:** If user cancels a wallet transaction, we store `snake_autopay_disabled_<wallet>` in localStorage to avoid annoying future auto-attempts.
+
+To reset autopay for a wallet (developer):
+```javascript
+localStorage.removeItem('snake_autopay_disabled_0x...')
+```
 
 ---
 
